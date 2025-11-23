@@ -5,62 +5,57 @@
  ******************************************************/
 console.log("Malice Damage Splitter Module起動");
 Hooks.once("ready", () => {
-  console.log("Malice module ready — damage splitter enabled");
+  console.log("Malice splitter hook registered");
 
   Hooks.on("midi-qol.DamageApplied", async (workflow) => {
-    // 対象が存在しないなら中断
-    const targetToken = workflow.hitTargets?.first();
+    console.log("→ MALICE HOOK TRIGGERED");
+
+    const attacker = workflow.actor;
+    if (!attacker) return;
+
+    const targetToken = workflow.hitTargets.first();
     if (!targetToken) return;
 
     const defender = targetToken.actor;
-    const attacker = workflow.actor;
+    if (!defender) return;
 
-    // defender に auraId（= Aura Actor の ID）がなければ中断
     const auraId = defender.getFlag("world", "auraId");
-    if (!auraId) return;
-
-    const auraActor = game.actors.get(auraId);
-    if (!auraActor) {
-      console.warn("Malice module: Aura Actor not found:", auraId);
+    if (!auraId) {
+      console.log("No Aura ID on defender");
       return;
     }
 
-    // ダメージ分解（Malice / 通常）
+    const auraActor = game.actors.get(auraId);
+    if (!auraActor) {
+      console.log("Aura Actor NOT found");
+      return;
+    }
+
+    // === ダメージ集計 ===
     let maliceDamage = 0;
     let normalDamage = 0;
 
-    for (let part of workflow.damageDetail) {
-      const isMalice = (part.flavor === "Malice" || part.flavor === "怨恨");
-      if (isMalice) maliceDamage += part.damage;
-      else normalDamage += part.damage;
+    for (const d of workflow.damageDetail) {
+      if (d.flavor === "Malice" || d.flavor === "怨恨") maliceDamage += d.damage;
+      else normalDamage += d.damage;
     }
 
-    // Maliceダメージも通常ダメージも 0 の場合は処理不要
-    if (maliceDamage === 0 && normalDamage === 0) return;
+    console.log(`MALICE → ${maliceDamage}`);
+    console.log(`NORMAL → ${normalDamage}`);
 
-    console.log(
-      `Malice module: ${attacker.name} hit ${defender.name} → normal=${normalDamage}, malice=${maliceDamage}`
-    );
-
-    // --- Maliceは Aura Actorに与える ---
+    // === ダメージ適用 ===
     if (maliceDamage > 0) {
-      const auraToken = auraActor?.getActiveTokens()?.[0];
-      if (auraToken) {
-        await MidiQOL.applyTokenDamage(
-          [{ damage: maliceDamage, type: "malice" }],
-          maliceDamage,
-          new Set([auraToken]),
-          null,
-          null
-        );
-      } else {
-        // トークンがシーンにいなくても HP を直接更新
-        const newHp = Math.max(auraActor.system.attributes.hp.value - maliceDamage, 0);
-        await auraActor.update({ "system.attributes.hp.value": newHp });
-      }
+      await auraActor.update({
+        "system.attributes.hp.value": Math.max(auraActor.system.attributes.hp.value - maliceDamage, 0)
+      });
     }
 
-    // --- 通常ダメージは Defender に任せる（Midi-QOL が自動で適用）---
+    if (normalDamage > 0) {
+      await defender.update({
+        "system.attributes.hp.value": Math.max(defender.system.attributes.hp.value - normalDamage, 0)
+      });
+    }
 
+    console.log("★ Malice damage split finished");
   });
 });
