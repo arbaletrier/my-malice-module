@@ -1,0 +1,13 @@
+{
+  "name": "my-malice-module",
+  "title": "Malice Damage Splitter",
+  "description": "Automatically routes Malice damage to the Aura Actor.",
+  "version": "1.0.0",
+  "author": "YourName",
+  "compatibleCoreVersion": "12",
+  "scripts": [
+    "main.js"
+  ],
+  "esmodules": [],
+  "styles": []
+}
