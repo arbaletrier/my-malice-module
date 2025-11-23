@@ -4,42 +4,39 @@
  * 対象が auraId を持っている場合のみ発動
  ******************************************************/
 console.log("Malice Damage Splitter Module起動");
-Hooks.once("ready", () => {
-  console.log("Malice splitter hook registered");
+// Malice Splitter – damageApplied 対応版
+Hooks.on("midi-qol.damageApplied", async (workflow) => {
+  try {
+    const defender = workflow?.actor;
+    if (!defender) return;
 
-  Hooks.on("midi-qol.WorkflowUpdate", async (workflow, update) => {
-    if (!update?.damageApplied) return; // ダメージが適用されたイベント以外は無視
+    const auraId = await defender.getFlag("world", "auraId");
+    if (!auraId) return; // 神でない
 
-    const targetToken = workflow.hitTargets.first();
-    if (!targetToken) return;
-    const defender = targetToken.actor;
-
-    const auraId = defender.getFlag("world", "auraId");
-    if (!auraId) return;
     const auraActor = game.actors.get(auraId);
     if (!auraActor) return;
 
     let malice = 0;
-    for (const d of update.damageApplied) {
+    let normal = 0;
+
+    for (const d of workflow.damageDetail) {
       if (d.flavor === "Malice" || d.flavor === "怨恨") {
-        malice += d.totalDamage;
+        malice += d.value;
+      } else {
+        normal += d.value;
       }
     }
 
-    if (malice === 0) return;
+    if (malice === 0) return; // Malice ダメージが無い攻撃は処理しない
 
-    console.log(`✔ MALICE DETECTED: ${malice} → Aura`);
+    // HP適用（神は通常ダメージのみ / Aura は Malice のみ）
+    if (normal > 0) await defender.applyDamage(normal);
+    if (malice > 0) await auraActor.applyDamage(malice);
 
-    // Defender に適用された Malice ダメージをそのまま回復（取り消し）
-    await defender.update({
-      "system.attributes.hp.value": defender.system.attributes.hp.value + malice
-    });
-
-    // Aura に Malice ダメージを適用
-    await auraActor.update({
-      "system.attributes.hp.value": Math.max(auraActor.system.attributes.hp.value - malice, 0)
-    });
-
-    console.log("★ Malice redistribution complete");
-  });
+    console.log(`MALICE SPLIT → God:${normal} / Aura:${malice}`);
+  } catch (e) {
+    console.error("Malice Splitter error:", e);
+  }
 });
+
+console.log("Malice Splitter module ready — damageApplied hook active");
