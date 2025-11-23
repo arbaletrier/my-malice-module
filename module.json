@@ -1,13 +1,21 @@
 {
-  "name": "my-malice-module",
-  "title": "Malice Damage Splitter",
-  "description": "Automatically routes Malice damage to the Aura Actor.",
+  "id": "my-malice-module",
+  "title": "My Malice Module",
+  "description": "Registers a malice hook on init.",
   "version": "1.0.0",
-  "author": "YourName",
-  "compatibleCoreVersion": "12",
+  "authors": [
+    {
+      "name": "YourName"
+    }
+  ],
+  "compatibility": {
+    "minimum": "11",
+    "verified": "12"
+  },
   "scripts": [
     "main.js"
   ],
-  "esmodules": [],
-  "styles": []
+  "url": "https://github.com/YourName/my-malice-module",
+  "manifest": "https://raw.githubusercontent.com/YourName/my-malice-module/main/module.json",
+  "download": "https://raw.githubusercontent.com/YourName/my-malice-module/main/module.zip"
 }
