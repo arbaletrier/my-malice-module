@@ -7,7 +7,9 @@ console.log("Malice Damage Splitter Module起動");
 Hooks.once("ready", () => {
   console.log("Malice splitter hook registered");
 
-  Hooks.on("midi-qol.DamageApplied", async (workflow) => {
+  Hooks.on("midi-qol.WorkflowUpdate", async (workflow, update) => {
+    if (!update?.damageApplied) return; // ダメージが適用されたイベント以外は無視
+
     const targetToken = workflow.hitTargets.first();
     if (!targetToken) return;
     const defender = targetToken.actor;
@@ -18,29 +20,26 @@ Hooks.once("ready", () => {
     if (!auraActor) return;
 
     let malice = 0;
-    let normal = 0;
-
-    // 元ダメージから Malice と通常を分解
-    for (const d of workflow.damageDetail) {
-      if (d.flavor === "Malice" || d.flavor === "怨恨") malice += d.damage;
-      else normal += d.damage;
+    for (const d of update.damageApplied) {
+      if (d.flavor === "Malice" || d.flavor === "怨恨") {
+        malice += d.totalDamage;
+      }
     }
 
-    // 👇 Midi-QOL に渡すダメージを上書き（本体には通常攻撃だけにする）
-    workflow.damageDetail = workflow.damageDetail.filter(d => !(d.flavor === "Malice" || d.flavor === "怨恨"));
-    workflow.damageTotal = normal;
+    if (malice === 0) return;
 
-    // 👇 Aura へ Malice 分のダメージを別途投げる（Midi-QOL 正規ルート）
-    if (malice > 0) {
-      await MidiQOL.applyTokenDamage(
-        [{ damage: malice, type: "force" }],       // ダメージ種別は自由（見た目用）
-        malice,
-        new Set([auraActor.getActiveTokens()[0]]), // ダメージ対象
-        workflow.item,
-        new Set()
-      );
-    }
+    console.log(`✔ MALICE DETECTED: ${malice} → Aura`);
 
-    console.log(`MALICE→ ${malice}  NORMAL→ ${normal}`);
+    // Defender に適用された Malice ダメージをそのまま回復（取り消し）
+    await defender.update({
+      "system.attributes.hp.value": defender.system.attributes.hp.value + malice
+    });
+
+    // Aura に Malice ダメージを適用
+    await auraActor.update({
+      "system.attributes.hp.value": Math.max(auraActor.system.attributes.hp.value - malice, 0)
+    });
+
+    console.log("★ Malice redistribution complete");
   });
 });
