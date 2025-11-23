@@ -12,9 +12,7 @@
     "minimum": "11",
     "verified": "12"
   },
-  "scripts": [
-    "main.js"
-  ],
+  "scripts": ["main.js"],
   "url": "https://github.com/arbaletrier/my-malice-module",
   "manifest": "https://raw.githubusercontent.com/arbaletrier/my-malice-module/main/module.json",
   "download": "https://raw.githubusercontent.com/arbaletrier/my-malice-module/main/module.zip"
