@@ -5,6 +5,6 @@
  ******************************************************/
 console.log("Malice Damage Splitter Module起動");
 // Malice Splitter – damageApplied 対応版
-Hooks.on("midi-qol.damageApplied", (workflow) => {
-  console.log("✔ damageApplied fired!", workflow);
+Hooks.on("midi-qol.preDamageApplication", (workflow) => {
+  console.log("preDamageApplication fired!", workflow);
 });
