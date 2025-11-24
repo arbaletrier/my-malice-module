@@ -5,6 +5,29 @@
  ******************************************************/
 console.log("Malice Damage Splitter Module起動");
 // Malice Splitter – damageApplied 対応版
-Hooks.on("midi-qol.preDamageApplication", (workflow) => {
-  console.log("preDamageApplication fired!", workflow);
-});
+const hooks = [
+  "midi-qol.damageApplied",
+  "midi-qol.DamageApplied",
+  "midi-qol.RollComplete",
+  "midi-qol.rollComplete",
+  "midi-qol.DamageRollComplete",
+  "midi-qol.damageRollComplete",
+  "midi-qol.workflowUpdate",
+  "midi-qol.preDamageRollComplete",
+  "midi-qol.preDamageApplication",
+  "midi-qol.damageListApplied",
+  "midi-qol.createDamageList",
+  "midi-qol.postDamageRoll",
+  "midi-qol.onUseItem",
+  "midi-qol.AttackRollComplete",
+  "midi-qol.DamageRollComplete",
+  "midi-qol.postApplyDamage",
+];
+
+for (const h of hooks) {
+  Hooks.on(h, (...args) => {
+    console.log(`💥 HOOK FIRED: ${h}`, ...args);
+  });
+}
+
+console.log("🔍 Midi-QOL hook diagnostic ready — perform an attack to detect active hook");

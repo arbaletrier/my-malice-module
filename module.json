@@ -2,7 +2,7 @@
   "id": "my-malice-module",
   "title": "My Malice Module",
   "description": "Registers a malice hook on init.",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "authors": [
     {
       "name": "arbaletrier"
