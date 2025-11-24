@@ -2,7 +2,7 @@
   "id": "my-malice-module",
   "title": "My Malice Module",
   "description": "Registers a malice hook on init.",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "authors": [
     {
       "name": "arbaletrier"
@@ -10,7 +10,7 @@
   ],
   "compatibility": {
     "minimum": "11",
-    "verified": "12"
+    "verified": "13"
   },
   "scripts": ["main.js"],
   "url": "https://github.com/arbaletrier/my-malice-module",
