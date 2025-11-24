@@ -4,67 +4,146 @@
  * 対象が auraId を持っている場合のみ発動
  ******************************************************/
 console.log("Malice Damage Splitter ModuleV1.1.0起動");
-// Malice Splitter – damageApplied 対応版
-// ======== MALICE DEBUG VERSION ========
-console.log("🔧 MALICE DEBUG: script loaded");
+// ================================
+// Malice Aura Splitter - main.js
+// ================================
 
-Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
-  console.log("🔧 MALICE DEBUG: DamageRollComplete fired");
-  console.log("🔧 workflow:", workflow);
+// 1) DnD5e 初期化時に Malice ダメージタイプを追加
+Hooks.once("dnd5e.init", () => {
+  console.log("🔮 [Malice Aura Splitter] dnd5e.init");
 
-  // defender（対象Actor）取得
-  const targetToken = workflow?.targets?.first();
-  console.log("🔧 targetToken:", targetToken);
-  if (!targetToken) return console.log("🛑 STOP: no target token → defender missing");
+  // 新しいダメージタイプ "malice" を追加
+  CONFIG.DND5E.damageTypes["malice"] = "Malice";
 
-  const defender = targetToken.actor;
-  console.log("🔧 defender:", defender);
-  if (!defender) return console.log("🛑 STOP: no defender actor");
-
-  // auraIdの有無チェック（神判定）
-  const auraId = defender.getFlag("world", "auraId");
-  console.log("🔧 auraId:", auraId);
-  if (!auraId) return console.log("🛑 STOP: this defender is NOT a God (auraId missing)");
-
-  const auraActor = game.actors.get(auraId);
-  console.log("🔧 auraActor:", auraActor);
-  if (!auraActor) return console.log("🛑 STOP: auraId set but actor not found in Actors directory");
-
-  console.log("🔧 workflow.damageDetail:", workflow.damageDetail);
-
-  let malice = 0;
-  let normal = 0;
-
-  for (const d of workflow.damageDetail) {
-    console.log("🔧 Damage detail entry:", d);
-    if (d.flavor === "Malice" || d.flavor === "怨恨") {
-      malice += d.value;
-      console.log(`🔧 → counted as MALICE ${d.value}`);
-    } else {
-      normal += d.value;
-      console.log(`🔧 → counted as NORMAL ${d.value}`);
-    }
+  // 抵抗などの一覧にも追加したい場合
+  if (!CONFIG.DND5E.damageResistanceTypes.includes("malice")) {
+    CONFIG.DND5E.damageResistanceTypes.push("malice");
   }
 
-  console.log(`🔧 collected totals → Normal:${normal}, Malice:${malice}`);
-
-  if (malice === 0) return console.log("🛑 STOP: no Malice damage found in this roll");
-
-  console.log(`⚡ APPLY: God receives ${normal}, Aura receives ${malice}`);
-
-  try {
-    if (normal > 0) {
-      console.log("🔧 applying normal damage to defender");
-      await defender.applyDamage(normal);
-    }
-    if (malice > 0) {
-      console.log("🔧 applying malice damage to aura");
-      await auraActor.applyDamage(malice);
-    }
-    console.log("🎉 MALICE APPLIED SUCCESSFULLY");
-  } catch (e) {
-    console.error("💥 APPLY ERROR:", e);
+  // アイコンはお好みで
+  if (CONFIG.DND5E.damageTypesIcon) {
+    CONFIG.DND5E.damageTypesIcon["malice"] = "icons/svg/death.svg";
   }
+
+  console.log("⚔ [Malice Aura Splitter] Damage type 'malice' registered");
 });
 
-console.log("🔧 MALICE DEBUG: DamageRollComplete hook registered");
+// 2) ゲーム準備完了
+Hooks.once("ready", () => {
+  console.log("✅ [Malice Aura Splitter] Module ready - using DamageRollComplete hook");
+});
+
+// 3) DamageRollComplete で Malice ダメージを Aura に飛ばす
+Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
+  console.log("🌀 [Malice] DamageRollComplete fired");
+
+  // --- 対象取得（ヒット対象優先 / なければ targets） ---
+  const targetToken =
+    workflow.hitTargets?.first
+      ? workflow.hitTargets.first()
+      : workflow.targets?.first?.();
+
+  console.log("  🎯 targetToken:", targetToken);
+
+  if (!targetToken) {
+    console.log("  ⛔ STOP: no target token");
+    return;
+  }
+
+  const defender = targetToken.actor;
+  console.log("  👤 defender:", defender?.name);
+
+  if (!defender) {
+    console.log("  ⛔ STOP: no defender actor");
+    return;
+  }
+
+  // --- 神Actor判定：flags.world.auraId を持っているか ---
+  const auraId = await defender.getFlag("world", "auraId");
+  console.log("  🌫 auraId flag:", auraId);
+
+  if (!auraId) {
+    console.log("  ⛔ STOP: defender has no auraId flag (not a God)");
+    return;
+  }
+
+  const auraActor = game.actors.get(auraId);
+  console.log("  👻 auraActor:", auraActor?.name);
+
+  if (!auraActor) {
+    console.log("  ⛔ STOP: auraActor not found for auraId");
+    return;
+  }
+
+  // シーン上のAuraトークン（最初の1体だけ想定）
+  const auraToken = auraActor.getActiveTokens()[0];
+  console.log("  🧿 auraToken:", auraToken);
+
+  if (!auraToken) {
+    console.log("  ⛔ STOP: auraActor has no active token on scene");
+    return;
+  }
+
+  // --- ダメージ内訳 ---
+  console.log("  📦 workflow.damageDetail:", workflow.damageDetail);
+
+  let maliceTotal = 0;
+  let normalTotal = 0;
+
+  const normalDetails = [];
+
+  for (const d of workflow.damageDetail) {
+    console.log("    🔍 entry:", d);
+
+    // d.type が "malice" なら Malice ダメージとみなす
+    const dmgType = String(d.type ?? "").toLowerCase();
+    if (dmgType === "malice") {
+      maliceTotal += d.value ?? d.damage ?? 0;
+      console.log(`    👉 counted as MALICE: +${d.value ?? d.damage ?? 0}`);
+    } else {
+      normalTotal += d.value ?? d.damage ?? 0;
+      normalDetails.push(d);
+      console.log(`    👉 counted as NORMAL: +${d.value ?? d.damage ?? 0}`);
+    }
+  }
+
+  console.log(
+    `  📊 collected totals → Normal:${normalTotal}, Malice:${maliceTotal}`
+  );
+
+  if (maliceTotal === 0) {
+    console.log("  ⛔ STOP: no Malice damage in this roll");
+    return;
+  }
+
+  // --- God へのダメージを書き換え（通常ダメージのみ残す） ---
+  workflow.damageDetail = normalDetails;
+  workflow.damageTotal = normalTotal;
+
+  console.log(
+    `  ✂ damageDetail overwritten for God → now only Normal:${normalTotal}`
+  );
+
+  // --- Aura へ Malice ダメージを別途適用 ---
+  try {
+    console.log(
+      `  ⚡ applying ${maliceTotal} Malice damage to Aura token ${auraToken.name}`
+    );
+
+    // Midi-QOL の applyTokenDamage を使って Aura にだけ Malice を与える
+    await MidiQOL.applyTokenDamage(
+      [{ damage: maliceTotal, type: "malice" }],
+      maliceTotal,
+      new Set([auraToken]),
+      workflow.item,
+      new Set(),
+      { flavor: "Malice" }
+    );
+
+    console.log("  🎉 Malice damage applied to Aura");
+  } catch (e) {
+    console.error("  💥 ERROR applying Malice damage to Aura:", e);
+  }
+
+  console.log("✅ [Malice Aura Splitter] DamageRollComplete finished");
+});

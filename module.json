@@ -1,19 +1,21 @@
 {
-  "id": "my-malice-module",
-  "title": "My Malice Module",
-  "description": "Registers a malice hook on init.",
-  "version": "1.1.3",
+  "id": "malice-aura-splitter",
+  "name": "Malice Aura Splitter",
+  "title": "Malice Aura Splitter",
+  "description": "Adds the Malice damage type and splits Malice damage to a linked Aura actor.",
+  "version": "1.1.4",
   "authors": [
-    {
-      "name": "arbaletrier"
-    }
+    { "name": "arbaletrier" }
   ],
   "compatibility": {
     "minimum": "11",
-    "verified": "13"
+    "verified": "12"
   },
-  "scripts": ["main.js"],
-  "url": "https://github.com/arbaletrier/my-malice-module",
-  "manifest": "https://raw.githubusercontent.com/arbaletrier/my-malice-module/main/module.json",
-  "download": "https://raw.githubusercontent.com/arbaletrier/my-malice-module/main/module.zip"
+  "systems": ["dnd5e"],
+  "esmodules": ["main.js"],
+  "scripts": [],
+  "styles": [],
+  "packs": [],
+  "manifest": "",
+  "download": ""
 }
