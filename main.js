@@ -6,6 +6,7 @@
 console.log("Malice Damage Splitter ModuleV1.1.0起動");
 // Malice Splitter – damageApplied 対応版
 Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
+  console.log("HOOK FIREDmidi-qol.DamageRollComplete");
   try {
     const defender = workflow?.targets?.first()?.actor;
     if (!defender) return;
