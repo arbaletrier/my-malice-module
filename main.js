@@ -9,23 +9,14 @@ console.log("Malice Damage Splitter ModuleV1.1.0起動");
 // ================================
 
 // 1) DnD5e 初期化時に Malice ダメージタイプを追加
-Hooks.once("dnd5e.init", () => {
-  console.log("🔮 [Malice Aura Splitter] dnd5e.init");
+Hooks.once("init", () => {
+  console.log("🔮 [Malice Aura Splitter] adding new damage type: malice");
 
-  // 新しいダメージタイプ "malice" を追加
-  CONFIG.DND5E.damageTypes["malice"] = "Malice";
-
-  // 抵抗などの一覧にも追加したい場合
-  if (!CONFIG.DND5E.damageResistanceTypes.includes("malice")) {
-    CONFIG.DND5E.damageResistanceTypes.push("malice");
-  }
-
-  // アイコンはお好みで
-  if (CONFIG.DND5E.damageTypesIcon) {
-    CONFIG.DND5E.damageTypesIcon["malice"] = "icons/svg/death.svg";
-  }
-
-  console.log("⚔ [Malice Aura Splitter] Damage type 'malice' registered");
+  // DnD5e v4.3+ 新仕様
+  CONFIG.DND5E.damageTypes["malice"] = "Malice";        // 表示名称
+  CONFIG.DND5E.damageResistanceTypes["malice"] = "Malice";
+  CONFIG.DND5E.damageVulnerabilityTypes["malice"] = "Malice";
+  CONFIG.DND5E.damageImmunityTypes["malice"] = "Malice";
 });
 
 // 2) ゲーム準備完了
