@@ -1,28 +1,34 @@
 /******************************************************
- * Xeno-Malice Unified Module v2.3.0
+ * Xeno-Malice Unified Module v2.3.1
  * - Xenotic Damage Splitter
  * - HP.max → XP.max Sync (PC Only)
  ******************************************************/
 
-console.log("Xeno-Malice Unified Module v2.3.0 loaded");
+console.log("Xeno-Malice Unified Module v2.3.1 loaded");
 
 
 /* -------------------------------------------
- * 1) Xenotic Damage Type の登録
- * ------------------------------------------- */
-Hooks.once("init", () => {
-  CONFIG.DND5E.damageTypes["xenotic"] = "Xenotic";
-  CONFIG.DND5E.damageResistanceTypes["xenotic"] = "Xenotic";
-  CONFIG.DND5E.damageVulnerabilityTypes["xenotic"] = "Xenotic";
-  CONFIG.DND5E.damageImmunityTypes["xenotic"] = "Xenotic";
-  console.log("🧬 [Xeno-Malice] Xenotic damage type registered.");
-});
-
-
-/* -------------------------------------------
- * 2) HP.max → XP.max 初期同期（ready）
+ * 1) ready時：DnD5e用の Xenotic ダメージタイプ登録
+ *    ＋ HP.max → XP.max 初期同期
  * ------------------------------------------- */
 Hooks.once("ready", async () => {
+  console.log("⚙️ [Xeno-Malice] ready hook start");
+
+  // ---- DnD5e コンフィグ取得 ----
+  const dnd5eConfig = CONFIG.DND5E ?? CONFIG.dnd5e;
+  if (!dnd5eConfig) {
+    console.error("❌ [Xeno-Malice] DnD5e system config not found. Is the dnd5e system active?");
+    return;
+  }
+
+  // ---- Xenotic ダメージタイプ登録 ----
+  console.log("🧬 [Xeno-Malice] Registering Xenotic damage type");
+  dnd5eConfig.damageTypes["xenotic"] = "Xenotic";
+  dnd5eConfig.damageResistanceTypes["xenotic"] = "Xenotic";
+  dnd5eConfig.damageVulnerabilityTypes["xenotic"] = "Xenotic";
+  dnd5eConfig.damageImmunityTypes["xenotic"] = "Xenotic";
+
+  // ---- HP.max → XP.max 初期同期 ----
   console.log("⚙️ [Xeno-Malice] Initial HP→XP.max sync running...");
 
   for (const actor of game.actors.contents) {
@@ -32,7 +38,7 @@ Hooks.once("ready", async () => {
 
     await actor.update(
       { "system.details.xp.max": maxHP },
-      { noHook: true }  // 循環呼び出し防止
+      { noHook: true }  // ループ防止
     );
   }
 
@@ -41,7 +47,7 @@ Hooks.once("ready", async () => {
 
 
 /* -------------------------------------------
- * 3) HP.max の変更時 → XP.max 自動同期（PCのみ）
+ * 2) HP.max の変更時 → XP.max 自動同期（PCのみ）
  * ------------------------------------------- */
 Hooks.on("preUpdateActor", (actor, update) => {
   if (actor.type !== "character") return;
@@ -49,14 +55,18 @@ Hooks.on("preUpdateActor", (actor, update) => {
   const newMaxHP = getProperty(update, "system.attributes.hp.max");
   if (newMaxHP === undefined) return;
 
+  console.log(`🔁 [Xeno-Malice] Sync HP.max(${newMaxHP}) -> XP.max for`, actor.name);
   setProperty(update, "system.details.xp.max", newMaxHP);
 });
 
 
 /* -------------------------------------------
- * 4) Xenotic Damage Splitter
+ * 3) Xenotic Damage Splitter
+ *    Xenotic ダメージのみ Aura に転送
  * ------------------------------------------- */
 Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
+  console.log("🜂 [Xenotic] DamageRollComplete triggered");
+
   const targetToken = workflow.hitTargets?.first?.() ?? workflow.targets?.first?.();
   if (!targetToken) return;
 
@@ -77,7 +87,9 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   const normalDetails = [];
 
   for (const d of workflow.damageDetail) {
-    if (String(d.type ?? "").toLowerCase() === "xenotic") {
+    console.log("🔧 [Xeno-Malice] Damage detail entry:", d);
+    const dmgType = String(d.type ?? "").toLowerCase();
+    if (dmgType === "xenotic") {
       xenoticTotal += d.value ?? d.damage ?? 0;
     } else {
       normalTotal += d.value ?? d.damage ?? 0;
@@ -85,11 +97,14 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
     }
   }
 
+  // Xenotic ダメージが無ければ通常通り
   if (xenoticTotal === 0) return;
 
+  // Defender 側には通常ダメージのみ
   workflow.damageDetail = normalDetails;
   workflow.damageTotal = normalTotal;
 
+  // Aura に Xenotic ダメージ転送
   try {
     await MidiQOL.applyTokenDamage(
       [{ damage: xenoticTotal, type: "xenotic" }],
