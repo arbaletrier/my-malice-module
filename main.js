@@ -1,42 +1,27 @@
 /******************************************************
- * Malice Damage Splitter Module
- * 神のオーラに Malice ダメージのみを転送するダークソウル風拡張
+ * Xenotic Damage Splitter Module
+ * 神のオーラに Xenotic ダメージのみを転送するダークソウル風拡張
  ******************************************************/
 
-console.log("Malice Damage Splitter Module v1.1.0 loaded");
+console.log("Xenotic Damage Splitter Module v1.1.0 loaded");
 
-// 1) Malice ダメージタイプを DnD5e に追加
+// 1) Xenotic ダメージタイプを DnD5e に追加
 Hooks.once("init", () => {
-  console.log("🔮 [Malice Aura Splitter] registering new damage type: malice");
-  CONFIG.DND5E.damageTypes["malice"] = "Malice";
-  CONFIG.DND5E.damageResistanceTypes["malice"] = "Malice";
-  CONFIG.DND5E.damageVulnerabilityTypes["malice"] = "Malice";
-  CONFIG.DND5E.damageImmunityTypes["malice"] = "Malice";
+  console.log("🧬 [Xenotic Aura Splitter] registering new damage type: xenotic");
+  CONFIG.DND5E.damageTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageResistanceTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageVulnerabilityTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageImmunityTypes["xenotic"] = "Xenotic";
 });
 
 // 2) ゲーム準備
 Hooks.once("ready", () => {
-   console.log("⚙️ [HP→XP Sync] Initial sync running...");
-
-  for (const actor of game.actors.contents) {
-    if (actor.type !== "character") continue;
-
-    const maxHP = actor.system?.attributes?.hp?.max ?? 0;
-
-    // XP.max に MaxHP をコピー（XP.value はそのまま）
-    await actor.update(
-      { "system.details.xp.max": maxHP },
-      { noHook: true } // ループ防止（preUpdateActorを発火させない）
-    );
-  }
-
-  console.log("🟢 [HP→XP Sync] Initial sync complete");
+  console.log("⚔️ [Xenotic Aura Splitter] Module ready — DamageRollComplete active");
 });
 
-
-// 3) Malice ダメージを Aura に振り替える処理本体
+// 3) Xenotic ダメージを Aura に振り替える処理本体
 Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
-  console.log("🌀 [Malice] DamageRollComplete triggered");
+  console.log("🜂 [Xenotic] DamageRollComplete triggered");
 
   // 対象（攻撃された側）取得
   const targetToken =
@@ -59,38 +44,38 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   if (!auraToken) return;
 
   // --- ダメージ集計 ---
-  let maliceTotal = 0;
+  let xenoticTotal = 0;
   let normalTotal = 0;
   const normalDetails = [];
 
   for (const d of workflow.damageDetail) {
     const dmgType = String(d.type ?? "").toLowerCase();
-    if (dmgType === "malice") {
-      maliceTotal += d.value ?? d.damage ?? 0;
+    if (dmgType === "xenotic") {
+      xenoticTotal += d.value ?? d.damage ?? 0;
     } else {
       normalTotal += d.value ?? d.damage ?? 0;
       normalDetails.push(d);
     }
   }
 
-  // Malice が無いなら通常処理
-  if (maliceTotal === 0) return;
+  // Xenotic が無いなら通常処理
+  if (xenoticTotal === 0) return;
 
   // --- God へは通常ダメージのみ残す ---
   workflow.damageDetail = normalDetails;
   workflow.damageTotal = normalTotal;
 
-  // --- Aura へ Malice ダメージ ---
+  // --- Aura へ Xenotic ダメージ ---
   try {
     await MidiQOL.applyTokenDamage(
-      [{ damage: maliceTotal, type: "malice" }],
-      maliceTotal,
+      [{ damage: xenoticTotal, type: "xenotic" }],
+      xenoticTotal,
       new Set([auraToken]),
       workflow.item,
       new Set(),
-      { flavor: "Malice" }
+      { flavor: "Xenotic" }
     );
   } catch (e) {
-    console.error("❌ Malice Aura damage error:", e);
+    console.error("❌ Xenotic Aura damage error:", e);
   }
 });
