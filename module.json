@@ -3,7 +3,7 @@
   "name": "Malice Aura Splitter",
   "title": "Malice Aura Splitter",
   "description": "Adds the Malice damage type and splits Malice damage to a linked Aura actor.",
-  "version": "1.1.6",
+  "version": "1.1.8",
   "authors": [
     { "name": "arbaletrier" }
   ],

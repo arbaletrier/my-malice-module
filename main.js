@@ -1,29 +1,62 @@
 /******************************************************
- * Malice Damage Splitter Module
- * 神のオーラに Malice ダメージのみを転送するダークソウル風拡張
+ * Xeno-Malice Unified Module
+ * - Xenotic Damage Split
+ * - HP → XP Sync (PC Only)
  ******************************************************/
 
-console.log("Malice Damage Splitter Module v1.1.0 loaded");
+console.log("Xeno-Malice Unified Module v2.0.0 loaded");
 
-// 1) Malice ダメージタイプを DnD5e に追加
+
+/* ------------------------------------------ *
+ * 1) DnD5e へ Xenotic ダメージタイプを追加
+ * ------------------------------------------ */
 Hooks.once("init", () => {
-  console.log("🔮 [Malice Aura Splitter] registering new damage type: malice");
-  CONFIG.DND5E.damageTypes["malice"] = "Malice";
-  CONFIG.DND5E.damageResistanceTypes["malice"] = "Malice";
-  CONFIG.DND5E.damageVulnerabilityTypes["malice"] = "Malice";
-  CONFIG.DND5E.damageImmunityTypes["malice"] = "Malice";
+  console.log("🧬 [Xeno-Malice] registering damage type: xenotic");
+  CONFIG.DND5E.damageTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageResistanceTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageVulnerabilityTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageImmunityTypes["xenotic"] = "Xenotic";
 });
 
-// 2) ゲーム準備
-Hooks.once("ready", () => {
-  console.log("⚔️ [Malice Aura Splitter] Module ready — DamageRollComplete active");
+
+/* ------------------------------------------ *
+ * 2) ゲーム開始時：HP → XP 初期同期
+ * ------------------------------------------ */
+Hooks.once("ready", async () => {
+  console.log("⚙️ [Xeno-Malice] Initial HP→XP Sync running...");
+
+  for (const actor of game.actors.contents) {
+    if (actor.type !== "character") continue;
+    const hp = actor.system.attributes.hp?.max ?? 0;
+    await actor.update({
+      "system.details.xp.value": hp
+    });
+  }
+
+  console.log("🟢 [Xeno-Malice] Init Sync Complete");
 });
 
-// 3) Malice ダメージを Aura に振り替える処理本体
+
+/* ------------------------------------------ *
+ * 3) HP変動時：HP → XP の自動同期（PCのみ）
+ * ------------------------------------------ */
+Hooks.on("preUpdateActor", (actor, update) => {
+  if (actor.type !== "character") return;
+
+  const newHP = getProperty(update, "system.attributes.hp.max");
+  if (newHP === undefined) return;
+
+  // HPが増減したら直ちにXPへコピー
+  setProperty(update, "system.details.xp.value", newHP);
+});
+
+
+/* ------------------------------------------ *
+ * 4) Xenotic ダメージの Aura 転送処理
+ * ------------------------------------------ */
 Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
-  console.log("🌀 [Malice] DamageRollComplete triggered");
+  console.log("🜂 [Xenotic] DamageRollComplete triggered");
 
-  // 対象（攻撃された側）取得
   const targetToken =
     workflow.hitTargets?.first
       ? workflow.hitTargets.first()
@@ -33,7 +66,6 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   const defender = targetToken.actor;
   if (!defender) return;
 
-  // 神 Actor 判定
   const auraId = await defender.getFlag("world", "auraId");
   if (!auraId) return;
 
@@ -43,39 +75,35 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   const auraToken = auraActor.getActiveTokens()[0];
   if (!auraToken) return;
 
-  // --- ダメージ集計 ---
-  let maliceTotal = 0;
+  let xenoticTotal = 0;
   let normalTotal = 0;
   const normalDetails = [];
 
   for (const d of workflow.damageDetail) {
     const dmgType = String(d.type ?? "").toLowerCase();
-    if (dmgType === "malice") {
-      maliceTotal += d.value ?? d.damage ?? 0;
+    if (dmgType === "xenotic") {
+      xenoticTotal += d.value ?? d.damage ?? 0;
     } else {
       normalTotal += d.value ?? d.damage ?? 0;
       normalDetails.push(d);
     }
   }
 
-  // Malice が無いなら通常処理
-  if (maliceTotal === 0) return;
+  if (xenoticTotal === 0) return;
 
-  // --- God へは通常ダメージのみ残す ---
   workflow.damageDetail = normalDetails;
   workflow.damageTotal = normalTotal;
 
-  // --- Aura へ Malice ダメージ ---
   try {
     await MidiQOL.applyTokenDamage(
-      [{ damage: maliceTotal, type: "malice" }],
-      maliceTotal,
+      [{ damage: xenoticTotal, type: "xenotic" }],
+      xenoticTotal,
       new Set([auraToken]),
       workflow.item,
       new Set(),
-      { flavor: "Malice" }
+      { flavor: "Xenotic" }
     );
   } catch (e) {
-    console.error("❌ Malice Aura damage error:", e);
+    console.error("❌ [Xenotic] Aura damage error:", e);
   }
 });
