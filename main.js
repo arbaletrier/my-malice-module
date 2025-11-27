@@ -1,10 +1,10 @@
 /******************************************************
- * Xeno-Malice Unified Module v2.3.1
+ * Xeno-Malice Unified Module v2.3.2
  * - Xenotic Damage Splitter
  * - HP.max → XP.max Sync (PC Only)
  ******************************************************/
 
-console.log("Xeno-Malice Unified Module v2.3.1 loaded");
+console.log("Xeno-Malice Unified Module v2.3.2 loaded");
 
 
 /* -------------------------------------------
@@ -21,12 +21,18 @@ Hooks.once("ready", async () => {
     return;
   }
 
+  // ---- 必要なら各プロパティを初期化 ----
+  dnd5eConfig.damageTypes              = dnd5eConfig.damageTypes              || {};
+  dnd5eConfig.damageResistanceTypes    = dnd5eConfig.damageResistanceTypes    || {};
+  dnd5eConfig.damageVulnerabilityTypes = dnd5eConfig.damageVulnerabilityTypes || {};
+  dnd5eConfig.damageImmunityTypes      = dnd5eConfig.damageImmunityTypes      || {};
+
   // ---- Xenotic ダメージタイプ登録 ----
   console.log("🧬 [Xeno-Malice] Registering Xenotic damage type");
-  dnd5eConfig.damageTypes["xenotic"] = "Xenotic";
-  dnd5eConfig.damageResistanceTypes["xenotic"] = "Xenotic";
+  dnd5eConfig.damageTypes["xenotic"]              = "Xenotic";
+  dnd5eConfig.damageResistanceTypes["xenotic"]    = "Xenotic";
   dnd5eConfig.damageVulnerabilityTypes["xenotic"] = "Xenotic";
-  dnd5eConfig.damageImmunityTypes["xenotic"] = "Xenotic";
+  dnd5eConfig.damageImmunityTypes["xenotic"]      = "Xenotic";
 
   // ---- HP.max → XP.max 初期同期 ----
   console.log("⚙️ [Xeno-Malice] Initial HP→XP.max sync running...");
