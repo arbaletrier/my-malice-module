@@ -1,39 +1,68 @@
 /******************************************************
- * Xenotic Damage Splitter Module
- * 神のオーラに Xenotic ダメージのみを転送するダークソウル風拡張
+ * Xeno-Malice Unified Module v2.3.0
+ * - Xenotic Damage Splitter
+ * - HP.max → XP.max Sync (PC Only)
  ******************************************************/
 
-console.log("Xenotic Damage Splitter Module v1.1.0 loaded");
+console.log("Xeno-Malice Unified Module v2.3.0 loaded");
 
-// 1) Xenotic ダメージタイプを DnD5e に追加
+
+/* -------------------------------------------
+ * 1) Xenotic Damage Type の登録
+ * ------------------------------------------- */
 Hooks.once("init", () => {
-  console.log("🧬 [Xenotic Aura Splitter] registering new damage type: xenotic");
   CONFIG.DND5E.damageTypes["xenotic"] = "Xenotic";
   CONFIG.DND5E.damageResistanceTypes["xenotic"] = "Xenotic";
   CONFIG.DND5E.damageVulnerabilityTypes["xenotic"] = "Xenotic";
   CONFIG.DND5E.damageImmunityTypes["xenotic"] = "Xenotic";
+  console.log("🧬 [Xeno-Malice] Xenotic damage type registered.");
 });
 
-// 2) ゲーム準備
-Hooks.once("ready", () => {
-  console.log("⚔️ [Xenotic Aura Splitter] Module ready — DamageRollComplete active");
+
+/* -------------------------------------------
+ * 2) HP.max → XP.max 初期同期（ready）
+ * ------------------------------------------- */
+Hooks.once("ready", async () => {
+  console.log("⚙️ [Xeno-Malice] Initial HP→XP.max sync running...");
+
+  for (const actor of game.actors.contents) {
+    if (actor.type !== "character") continue;
+
+    const maxHP = actor.system?.attributes?.hp?.max ?? 0;
+
+    await actor.update(
+      { "system.details.xp.max": maxHP },
+      { noHook: true }  // 循環呼び出し防止
+    );
+  }
+
+  console.log("🟢 [Xeno-Malice] Initial sync complete.");
 });
 
-// 3) Xenotic ダメージを Aura に振り替える処理本体
+
+/* -------------------------------------------
+ * 3) HP.max の変更時 → XP.max 自動同期（PCのみ）
+ * ------------------------------------------- */
+Hooks.on("preUpdateActor", (actor, update) => {
+  if (actor.type !== "character") return;
+
+  const newMaxHP = getProperty(update, "system.attributes.hp.max");
+  if (newMaxHP === undefined) return;
+
+  setProperty(update, "system.details.xp.max", newMaxHP);
+});
+
+
+/* -------------------------------------------
+ * 4) Xenotic Damage Splitter
+ * ------------------------------------------- */
 Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
-  console.log("🜂 [Xenotic] DamageRollComplete triggered");
-
-  // 対象（攻撃された側）取得
-  const targetToken =
-    workflow.hitTargets?.first
-      ? workflow.hitTargets.first()
-      : workflow.targets?.first?.();
-
+  const targetToken = workflow.hitTargets?.first?.() ?? workflow.targets?.first?.();
   if (!targetToken) return;
+
   const defender = targetToken.actor;
   if (!defender) return;
 
-  // 神 Actor 判定
   const auraId = await defender.getFlag("world", "auraId");
   if (!auraId) return;
 
@@ -43,14 +72,12 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   const auraToken = auraActor.getActiveTokens()[0];
   if (!auraToken) return;
 
-  // --- ダメージ集計 ---
   let xenoticTotal = 0;
   let normalTotal = 0;
   const normalDetails = [];
 
   for (const d of workflow.damageDetail) {
-    const dmgType = String(d.type ?? "").toLowerCase();
-    if (dmgType === "xenotic") {
+    if (String(d.type ?? "").toLowerCase() === "xenotic") {
       xenoticTotal += d.value ?? d.damage ?? 0;
     } else {
       normalTotal += d.value ?? d.damage ?? 0;
@@ -58,14 +85,11 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
     }
   }
 
-  // Xenotic が無いなら通常処理
   if (xenoticTotal === 0) return;
 
-  // --- God へは通常ダメージのみ残す ---
   workflow.damageDetail = normalDetails;
   workflow.damageTotal = normalTotal;
 
-  // --- Aura へ Xenotic ダメージ ---
   try {
     await MidiQOL.applyTokenDamage(
       [{ damage: xenoticTotal, type: "xenotic" }],
@@ -76,6 +100,6 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
       { flavor: "Xenotic" }
     );
   } catch (e) {
-    console.error("❌ Xenotic Aura damage error:", e);
+    console.error("❌ [Xeno-Malice] Aura damage error:", e);
   }
 });
