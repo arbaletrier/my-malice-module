@@ -9,7 +9,7 @@
   ],
   "compatibility": {
     "minimum": "11",
-    "verified": "12"
+    "verified": "13"
   },
   "systems": ["dnd5e"],
   "esmodules": ["main.js"],
