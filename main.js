@@ -1,11 +1,11 @@
 /************************************************************
- * Xeno-Malice Unified Module v3.0.0
+ * Xeno-Malice Unified Module v3.1.0
  * - Xenoticダメージタイプ登録
  * - 神オーラへXenoticだけを転送
- * - PCが与えたXenoticダメージをXenoticPointに蓄積
+ * - PCが与えたXenoticダメージを特徴「XenoticPoint」の使用回数として蓄積
  ************************************************************/
 
-console.log("🧪 [Xeno-Malice] Unified Module v3.0.0 loaded");
+console.log("🧪 [Xeno-Malice] Unified Module v3.1.0 loaded");
 
 // 1) Xenotic ダメージタイプ登録
 Hooks.once("init", () => {
@@ -16,7 +16,7 @@ Hooks.once("init", () => {
   CONFIG.DND5E.damageImmunityTypes["xenotic"] = "Xenotic";
 });
 
-// 2) Ready Log
+// 2) Ready ログ
 Hooks.once("ready", () => {
   console.log("⚔️ [Xeno-Malice] Ready — DamageRollComplete active");
 });
@@ -31,6 +31,7 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   const defender = targetToken.actor;
   if (!defender) return;
 
+  // --- ダメージ集計 ---
   let xenoticTotal = 0;
   let normalTotal = 0;
   const normalDetails = [];
@@ -45,29 +46,43 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
     }
   }
 
-  //★ Xenoticまたは対象不一致なら打ち切り
+  // Xenoticダメージが無ければ何もしない
   if (xenoticTotal <= 0) return;
 
   //==============================
-  // ✦ 追加要素 ✦ PCへの蓄積処理
+  // ✦ 追加要素 ✦ XenoticPoint蓄積（PCのみ）
   //==============================
   if (attacker?.type === "character") {
     console.log(`⚛ [Xeno-Malice] PC dealt ${xenoticTotal} Xenotic`);
 
-    const res = attacker.system.resources;
-    const slots = ["primary", "secondary", "tertiary"];
+    // 名前に「XenoticPoint」を含む特徴アイテムを探す
+    const xenoticItem = attacker.items.find((item) => {
+      const name = (item.name ?? "").toLowerCase();
+      return name.includes("xenoticpoint") || name.includes("xenotic point");
+    });
 
-    for (const slot of slots) {
-      const r = res[slot];
-      if (!r?.label) continue;
-      if (r.label.toLowerCase().includes("xenoticpoint")) {
-        const newValue = (r.value ?? 0) + xenoticTotal;
+    if (!xenoticItem) {
+      console.warn("⚠ [Xeno-Malice] Feature 'XenoticPoint' not found on attacker");
+    } else {
+      const uses = xenoticItem.system?.uses;
+      if (!uses) {
+        console.warn("⚠ [Xeno-Malice] 'XenoticPoint' has no uses field");
+      } else {
+        const current = uses.value ?? 0;
+        const max = uses.max ?? null;
+        let newValue = current + xenoticTotal;
 
-        await attacker.update({
-          [`system.resources.${slot}.value`]: newValue
-        });
-        console.log(`📈 [Xeno-Malice] XenoticPoint +${xenoticTotal} → ${newValue}`);
-        break;
+        // 上限が設定されているならクランプしておく
+        if (max !== null && max !== undefined) {
+          newValue = Math.min(newValue, max);
+        }
+
+        await xenoticItem.update({ "system.uses.value": newValue });
+
+        console.log(
+          `📈 [Xeno-Malice] XenoticPoint uses ${current} → ${newValue}` +
+          (max != null ? ` / ${max}` : "")
+        );
       }
     }
   }
@@ -83,6 +98,7 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   const auraToken = auraActor.getActiveTokens()[0];
   if (!auraToken) return;
 
+  // Defender側には通常ダメージだけ残す
   workflow.damageDetail = normalDetails;
   workflow.damageTotal = normalTotal;
 
