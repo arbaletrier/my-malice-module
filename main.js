@@ -1,11 +1,12 @@
 /************************************************************
- * Xeno-Malice Unified Module v3.1.0
+ * Xeno-Malice Unified Module v3.2.0
  * - Xenoticダメージタイプ登録
  * - 神オーラへXenoticだけを転送
  * - PCが与えたXenoticダメージを特徴「XenoticPoint」の使用回数として蓄積
+ *   （system.uses か activities.*.uses を自動検出）
  ************************************************************/
 
-console.log("🧪 [Xeno-Malice] Unified Module v3.1.0 loaded");
+console.log("🧪 [Xeno-Malice] Unified Module v3.2.0 loaded");
 
 // 1) Xenotic ダメージタイプ登録
 Hooks.once("init", () => {
@@ -37,6 +38,7 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   const normalDetails = [];
 
   for (const d of workflow.damageDetail) {
+    console.log("🔧 [Xeno-Malice] Damage detail entry:", d);
     const dmgType = String(d.type ?? "").toLowerCase();
     if (dmgType === "xenotic") {
       xenoticTotal += d.value ?? d.damage ?? 0;
@@ -50,7 +52,7 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
   if (xenoticTotal <= 0) return;
 
   //==============================
-  // ✦ 追加要素 ✦ XenoticPoint蓄積（PCのみ）
+  // ✦ XenoticPoint蓄積（PCのみ）
   //==============================
   if (attacker?.type === "character") {
     console.log(`⚛ [Xeno-Malice] PC dealt ${xenoticTotal} Xenotic`);
@@ -64,31 +66,59 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
     if (!xenoticItem) {
       console.warn("⚠ [Xeno-Malice] Feature 'XenoticPoint' not found on attacker");
     } else {
-      const uses = xenoticItem.system?.uses;
-      if (!uses) {
-        console.warn("⚠ [Xeno-Malice] 'XenoticPoint' has no uses field");
-      } else {
-        const current = uses.value ?? 0;
-        const max = uses.max ?? null;
-        let newValue = current + xenoticTotal;
+      // データ構造を一度ログに吐いて確認
+      console.log("[Xeno-Malice] XenoticPoint item found:", xenoticItem.name);
+      console.log("[Xeno-Malice] XenoticPoint system.uses:", xenoticItem.system?.uses);
+      console.log("[Xeno-Malice] XenoticPoint system.activities:", xenoticItem.system?.activities);
 
-        // 上限が設定されているならクランプしておく
-        if (max !== null && max !== undefined) {
+      let path = null;
+      let current = 0;
+      let max = null;
+
+      // ① まずは従来の system.uses.value をチェック
+      const uses = xenoticItem.system?.uses;
+      if (uses && typeof uses.value === "number") {
+        path = "system.uses.value";
+        current = uses.value;
+        max = typeof uses.max === "number" ? uses.max : null;
+      }
+
+      // ② 見つからなければ activities.*.uses.value を探索
+      if (!path && xenoticItem.system?.activities) {
+        for (const [actId, act] of Object.entries(xenoticItem.system.activities)) {
+          if (act && act.uses && typeof act.uses.value === "number") {
+            path = `system.activities.${actId}.uses.value`;
+            current = act.uses.value;
+            max = typeof act.uses.max === "number" ? act.uses.max : null;
+            console.log(`[Xeno-Malice] Using activity uses at ${path}`);
+            break;
+          }
+        }
+      }
+
+      if (!path) {
+        console.warn("⚠ [Xeno-Malice] No usable 'uses.value' field found on XenoticPoint item");
+      } else {
+        let newValue = current + xenoticTotal;
+        if (max !== null) {
           newValue = Math.min(newValue, max);
         }
 
-        await xenoticItem.update({ "system.uses.value": newValue });
-
         console.log(
-          `📈 [Xeno-Malice] XenoticPoint uses ${current} → ${newValue}` +
-          (max != null ? ` / ${max}` : "")
+          `📈 [Xeno-Malice] Updating ${path}: ${current} → ${newValue}` +
+          (max !== null ? ` / ${max}` : "")
         );
+
+        const updateData = {};
+        updateData[path] = newValue;
+
+        await xenoticItem.update(updateData);
       }
     }
   }
 
   //==============================
-  // ✦ 既存要素 ✦ オーラへの転送処理
+  // ✦ オーラへの転送処理
   //==============================
   const auraId = await defender.getFlag("world", "auraId");
   if (!auraId) return;
