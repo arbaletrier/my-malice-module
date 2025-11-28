@@ -1,15 +1,13 @@
 /******************************************************
- * HP → Required XP Sync Module (Stable Ver.)
- * - PCの最大HPをXP.maxに常時同期
- * - XP.valueは変更しない
+ * Xeno-Malice: HP → Required XP Sync Module (Stable)
  ******************************************************/
 
-console.log("HP→XP Sync Module [Stable] loaded");
+console.log("[Xeno-Malice] HP→XP Sync Module loaded");
 
 
 // 1) ゲーム開始時：最大HP→XP.max 初期同期
 Hooks.once("ready", async () => {
-  console.log("⚙️ Initial HP→XP.max sync...");
+  console.log("[Xeno-Malice] Initial HP→XP.max sync...");
 
   for (const actor of game.actors.contents) {
     if (actor.type !== "character") continue;
@@ -21,19 +19,20 @@ Hooks.once("ready", async () => {
     }, { noHook: true });
   }
 
-  console.log("🟢 Initial sync complete");
+  console.log("[Xeno-Malice] Initial sync complete");
 });
 
 
-// 2) HP.maxの変動検知→XP.maxに同期
-Hooks.on("updateActor", (actor, update) => {
+// 2) HP.max変動時：XP.max自動同期（PCのみ）
+Hooks.on("updateActor", async (actor, update) => {
   if (actor.type !== "character") return;
 
-  // updateにhp.maxがないケースが多いため、actorから直接取得
   const newMaxHP = actor.system?.attributes?.hp?.max;
   if (newMaxHP == null) return;
 
-  console.log(`🔁 Sync HP.max(${newMaxHP}) → XP.max`);
+  console.log(`[Xeno-Malice] Sync HP.max(${newMaxHP}) → XP.max`);
 
-  foundry.utils.setProperty(update, "system.details.xp.max", newMaxHP);
+  await actor.update({
+    "system.details.xp.max": newMaxHP
+  }, { noHook: true });
 });
