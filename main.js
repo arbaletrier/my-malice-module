@@ -1,40 +1,93 @@
-/************************************************************
- * Xeno-Malice Safe Test v3.7.1
- * XenoticPoint (ID固定) の uses.value を +1するだけ
- ************************************************************/
+/******************************************************
+ * Xeno-Malice Unified Module v4.0.0 (Stable)
+ * ・Xenoticダメージ → Auraへ移送
+ * ・与えたXenoticダメージ分だけXenoticPoint増加
+ *   ※uses.spent を減らす方式 (残回数 = max - spent)
+ ******************************************************/
 
-console.log("🧪 [Xeno-Malice Test] v3.7.1 loaded");
+console.log("🧬 [Xeno-Malice] Module Loaded v4.0.0");
 
-// ★ あなたの XenoticPoint アイテムID（固定）
-const ITEM_ID = "nWyRMw6vdeX8XQ3K";
+Hooks.once("init", () => {
+  console.log("🧬 [Xeno-Malice] Register Xenotic damage type");
+  CONFIG.DND5E.damageTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageResistanceTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageVulnerabilityTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageImmunityTypes["xenotic"] = "Xenotic";
+});
 
-// Foundry 起動後、即テスト実行
-Hooks.once("ready", async () => {
-  console.log("🧪 [Xeno-Malice Test] ready → Try update…");
+Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
+  console.log("🜂 [Xeno-Malice] DamageRollComplete triggered");
 
-  const actor = game.user.character;
-  if (!actor) {
-    return ui.notifications.error("❌ game.user.character なし");
+  const attacker = workflow.actor;
+  const targetToken = workflow.hitTargets?.first();
+  if (!attacker || !targetToken) return;
+  const defender = targetToken.actor;
+  if (!defender) return;
+
+  const auraId = await defender.getFlag("world", "auraId");
+  if (!auraId) return;
+  const auraActor = game.actors.get(auraId);
+  const auraToken = auraActor?.getActiveTokens()[0];
+  if (!auraToken) return;
+
+  let xenoticTotal = 0;
+  const normalDetails = [];
+  let normalTotal = 0;
+
+  for (const d of workflow.damageDetail) {
+    const dmgType = String(d.type ?? "").toLowerCase();
+    if (dmgType === "xenotic") {
+      xenoticTotal += d.value ?? d.damage ?? 0;
+    } else {
+      normalTotal += d.value ?? d.damage ?? 0;
+      normalDetails.push(d);
+    }
   }
 
-  const item = actor.items.get(ITEM_ID);
-  if (!item) {
-    return ui.notifications.error("❌ XenoticPoint アイテム未発見（ID不一致？）");
+  if (xenoticTotal <= 0) {
+    console.log("🛑 [Xeno-Malice] No Xenotic damage in this attack");
+    return;
   }
 
-  const uses = item.system?.uses;
-  if (!uses) {
-    return ui.notifications.error("❌ system.uses が無い");
+  console.log(`⚛ [Xeno-Malice] Xenotic dealt: ${xenoticTotal}`);
+
+  // XenoticPointアイテム取得
+  const xenoticItem = attacker.items.find(i =>
+    i.name.toLowerCase() === "xenoticpoint"
+  );
+  if (!xenoticItem) {
+    console.warn("❓ [Xeno-Malice] XenoticPoint item not found on attacker!");
+  } else {
+    const uses = xenoticItem.system.uses;
+
+    // spentを減らす → 残回数増加
+    const newSpent = Math.max(0, (uses.spent ?? 0) - xenoticTotal);
+
+    await xenoticItem.update({
+      "system.uses.spent": newSpent
+    });
+
+    const remaining = uses.max - newSpent;
+
+    console.log(`📈 [Xeno-Malice] XenoticPoint Updated → Remaining: ${remaining}/${uses.max}`);
   }
 
-  const before = Number(uses.value ?? 0);
-  const after = before + 1;
+  // AuraへXenoticダメージ送る
+  try {
+    await MidiQOL.applyTokenDamage(
+      [{ damage: xenoticTotal, type: "xenotic" }],
+      xenoticTotal,
+      new Set([auraToken]),
+      workflow.item,
+      new Set(),
+      { flavor: "Xenotic Corruption" }
+    );
+    console.log(`➡ [Xeno-Malice] Aura Damage applied: ${xenoticTotal}`);
+  } catch (e) {
+    console.error("❌ [Xeno-Malice] Aura Damage Error:", e);
+  }
 
-  console.log(`📈 [Xeno-Malice Test] uses: ${before} → ${after}`);
-
-  await item.update({ "system.uses.value": after });
-
-  console.log("💾 [Xeno-Malice Test] 更新完了");
-  ui.notifications.info("✔ XenoticPoint +1 完了！");
-
+  // 攻撃対象には通常ダメージのみ適用
+  workflow.damageDetail = normalDetails;
+  workflow.damageTotal = normalTotal;
 });
