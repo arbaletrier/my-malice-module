@@ -1,12 +1,12 @@
 /************************************************************
- * Xeno-Malice Unified Module v3.5.0
- * - uses.max="" の場合に max=nullへ自動修正
+ * Xeno-Malice Unified Module v3.6.0
+ * - Actor本体とTokenデータ両方を更新しUIへ反映
  ************************************************************/
 
-console.log("🧪 [Xeno-Malice] Unified Module v3.5.0 loaded");
+console.log("🧪 [Xeno-Malice] Unified Module v3.6.0 loaded");
 
 Hooks.once("init", () => {
-  console.log("🧬 [Xeno-Malice] Registering Xenotic damage type");
+  console.log("🧬 [Xeno-Malice] Xenotic damage type registered");
   CONFIG.DND5E.damageTypes["xenotic"] = "Xenotic";
 });
 
@@ -33,24 +33,29 @@ Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
 
   let current = Number(uses.value) || 0;
   let rawMax = uses.max;
-
-  // ★ 修正ポイント：空文字→null
   let max = isNaN(Number(rawMax)) || rawMax === "" ? null : Number(rawMax);
 
   const newValue = current + xeno;
   console.log(`📈 [Xeno-Malice] ${current} → ${newValue} (max=${max ?? "∞"})`);
 
   const updateData = {
-    "system.uses.value": newValue
+    "system.uses.value": newValue,
+    "system.uses.max": max
   };
 
-  // maxが空だった場合、併せてnullに更新
-  if (max === null) {
-    updateData["system.uses.max"] = null;
-    console.log("🧹 [Xeno-Malice] Fixed invalid max ('') → null");
+  //========================
+  // Actor 本体更新
+  //========================
+  await xpItem.update(updateData);
+  console.log("💾 Actor item updated");
+
+  //========================
+  // Token 側の表示強制更新
+  //========================
+  for (const token of attacker.getActiveTokens()) {
+    await token.actor.update(updateData, { render: true });
+    await token.object.drawEffects();
   }
 
-  await xpItem.update(updateData);
-
-  console.log("💾 [Xeno-Malice] XenoticPoint UPDATED!");
+  console.log("🖥 [Xeno-Malice] Token HUD refreshed successfully!");
 });
