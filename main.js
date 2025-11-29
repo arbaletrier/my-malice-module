@@ -1,61 +1,128 @@
 /************************************************************
- * Xeno-Malice Unified Module v3.6.0
- * - Actor本体とTokenデータ両方を更新しUIへ反映
+ * Xeno-Malice Unified Module v3.7.0
+ * - Xenotic ダメージ集計
+ * - XenoticPoint アイテムの uses.value をピンポイント更新
+ * - Actor や Token には一切触らない
  ************************************************************/
 
-console.log("🧪 [Xeno-Malice] Unified Module v3.6.0 loaded");
+console.log("🧪 [Xeno-Malice] Unified Module v3.7.0 loaded");
 
 Hooks.once("init", () => {
-  console.log("🧬 [Xeno-Malice] Xenotic damage type registered");
+  console.log("🧬 [Xeno-Malice] Registering Xenotic damage type");
   CONFIG.DND5E.damageTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageResistanceTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageVulnerabilityTypes["xenotic"] = "Xenotic";
+  CONFIG.DND5E.damageImmunityTypes["xenotic"] = "Xenotic";
+});
+
+Hooks.once("ready", () => {
+  console.log("⚔️ [Xeno-Malice] Ready — DamageRollComplete active");
 });
 
 Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
+  console.log("🜂 [Xeno-Malice] DamageRollComplete triggered");
+
   const attacker = workflow.actor;
-  if (!attacker || attacker.type !== "character") return;
+  const targetToken = workflow.hitTargets?.first?.() ?? workflow.targets?.first?.();
+  if (!attacker || !targetToken) return;
 
-  let xeno = 0;
+  const defender = targetToken.actor;
+  if (!defender) return;
+
+  // --- Xenoticダメージ集計 ---
+  let xenoticTotal = 0;
+  let normalTotal = 0;
+  const normalDetails = [];
+
+  console.log("🔧 [Xeno-Malice] workflow.damageDetail:", workflow.damageDetail);
+
   for (const d of workflow.damageDetail) {
-    if ((d.type ?? "").toLowerCase() === "xenotic")
-      xeno += d.value ?? 0;
+    console.log("🔧 [Xeno-Malice] Damage detail entry:", d);
+    const dmgType = String(d.type ?? "").toLowerCase();
+    if (dmgType === "xenotic") {
+      xenoticTotal += d.value ?? d.damage ?? 0;
+    } else {
+      normalTotal += d.value ?? d.damage ?? 0;
+      normalDetails.push(d);
+    }
   }
-  if (xeno <= 0) return;
 
-  console.log(`🔥 [Xeno-Malice] Xenotic +${xeno}`);
-
-  const xpItem = attacker.items.find(i =>
-    i.name?.toLowerCase()?.includes("xenotic")
+  console.log(
+    `🔧 [Xeno-Malice] collected totals → Normal:${normalTotal}, Xenotic:${xenoticTotal}`
   );
-  if (!xpItem) return console.warn("❌ XenoticPoint not found");
 
-  const uses = xpItem.system?.uses;
-  if (!uses) return console.warn("❌ Uses field missing");
+  if (xenoticTotal > 0 && attacker.type === "character") {
+    console.log(`🔥 [Xeno-Malice] Xenotic +${xenoticTotal}`);
 
-  let current = Number(uses.value) || 0;
-  let rawMax = uses.max;
-  let max = isNaN(Number(rawMax)) || rawMax === "" ? null : Number(rawMax);
+    // ★ XenoticPoint アイテムを特定（同名が複数あるので「最後の1つ」を採用）
+    const allXenoItems = attacker.items.contents.filter(i =>
+      (i.name ?? "").toLowerCase() === "xenoticpoint"
+    );
 
-  const newValue = current + xeno;
-  console.log(`📈 [Xeno-Malice] ${current} → ${newValue} (max=${max ?? "∞"})`);
+    console.log(
+      "📦 [Xeno-Malice] XenoticPoint candidates:",
+      allXenoItems.map(i => `${i.name} (${i.id})`)
+    );
 
-  const updateData = {
-    "system.uses.value": newValue,
-    "system.uses.max": max
-  };
+    const xpItem = allXenoItems.at(-1); // 配列の最後の XenoticPoint を使用
+    if (!xpItem) {
+      console.warn("❌ [Xeno-Malice] XenoticPoint item NOT FOUND on attacker");
+    } else {
+      console.log(`🎯 [Xeno-Malice] Using XenoticPoint item: ${xpItem.name} (${xpItem.id})`);
+      const uses = xpItem.system?.uses;
 
-  //========================
-  // Actor 本体更新
-  //========================
-  await xpItem.update(updateData);
-  console.log("💾 Actor item updated");
+      if (!uses) {
+        console.warn("⚠ [Xeno-Malice] XenoticPoint.item.system.uses is missing");
+      } else {
+        const before = Number(uses.value ?? 0);
+        let rawMax = uses.max;
+        let max = isNaN(Number(rawMax)) || rawMax === "" ? null : Number(rawMax);
 
-  //========================
-  // Token 側の表示強制更新
-  //========================
-  for (const token of attacker.getActiveTokens()) {
-    await token.actor.update(updateData, { render: true });
-    await token.object.drawEffects();
+        const after = before + xenoticTotal;
+
+        console.log(
+          `📈 [Xeno-Malice] XenoticPoint uses: ${before} → ${after} (max=${max ?? "∞"})`
+        );
+
+        const updateData = { "system.uses.value": after };
+        if (rawMax === "") {
+          // maxが空文字ならついでにnullにしておく（安全化）
+          updateData["system.uses.max"] = null;
+          console.log("🧹 [Xeno-Malice] Fixed invalid max ('') → null");
+        }
+
+        // ★ ここでは Item 単体だけ更新する
+        await xpItem.update(updateData);
+
+        console.log("💾 [Xeno-Malice] XenoticPoint item UPDATED");
+      }
+    }
   }
 
-  console.log("🖥 [Xeno-Malice] Token HUD refreshed successfully!");
+  // === 以下はオーラへのXenoticダメージ転送（必要であれば残す） ===
+  const auraId = await defender.getFlag("world", "auraId");
+  if (!auraId || xenoticTotal <= 0) return;
+
+  const auraActor = game.actors.get(auraId);
+  if (!auraActor) return;
+  const auraToken = auraActor.getActiveTokens()[0];
+  if (!auraToken) return;
+
+  // Defenderには通常ダメージのみ残す
+  workflow.damageDetail = normalDetails;
+  workflow.damageTotal = normalTotal;
+
+  try {
+    await MidiQOL.applyTokenDamage(
+      [{ damage: xenoticTotal, type: "xenotic" }],
+      xenoticTotal,
+      new Set([auraToken]),
+      workflow.item,
+      new Set(),
+      { flavor: "Xenotic" }
+    );
+    console.log(`➡ [Xeno-Malice] Xenotic transferred to Aura (${xenoticTotal})`);
+  } catch (e) {
+    console.error("❌ [Xeno-Malice] Aura damage error:", e);
+  }
 });
