@@ -1,48 +1,12 @@
 /************************************************************
- * Xeno-Malice Unified Module v4.0.0
- * - Xenotic ダメージタイプ定義
- * - Xenoticダメージを Auraへ転送
- * - XenoticPoint蓄積（GM権限安全処理）
+ * Xeno-Malice Unified Module v3.7.0
+ * - Xenotic ダメージ集計
+ * - XenoticPoint アイテムの uses.value をピンポイント更新
+ * - Actor や Token には一切触らない
  ************************************************************/
 
-console.log("🔥 [Xeno-Malice] Unified Module v4.0.0 loaded");
+console.log("🧪 [Xeno-Malice] Unified Module v3.7.0 loaded");
 
-/* ---------------------------------------------------------
- * GM API: アイテム更新処理（Socket経由）
- * --------------------------------------------------------- */
-async function gmUpdateItem(actorId, itemId, data) {
-  console.log("📡 [Xeno-Malice] Request GM to update item:", data);
-
-  if (game.user.isGM) {
-    const actor = game.actors.get(actorId);
-    const item = actor?.items.get(itemId);
-    if (!item) {
-      console.warn("⚠ [Xeno-Malice] GM: item not found");
-      return false;
-    }
-    return item.update(data);
-  }
-
-  // プレイヤー操作 → GMへ転送
-  return socket.executeAsGM("xenoUpdateItem", actorId, itemId, data);
-}
-
-if (game.user.isGM) {
-  socket.register("xenoUpdateItem", async (actorId, itemId, data) => {
-    const actor = game.actors.get(actorId);
-    const item = actor?.items.get(itemId);
-    if (!item) {
-      console.warn("⚠ [Xeno-Malice] GM: item not found");
-      return false;
-    }
-    console.log("👑 [Xeno-Malice] GM updating item:", data);
-    return item.update(data);
-  });
-}
-
-/* ---------------------------------------------------------
- * Xenotic Damage Type
- * --------------------------------------------------------- */
 Hooks.once("init", () => {
   console.log("🧬 [Xeno-Malice] Registering Xenotic damage type");
   CONFIG.DND5E.damageTypes["xenotic"] = "Xenotic";
@@ -51,95 +15,135 @@ Hooks.once("init", () => {
   CONFIG.DND5E.damageImmunityTypes["xenotic"] = "Xenotic";
 });
 
+// ★ GM権限で Item を更新するヘルパー
+async function gmUpdateItem(item, updateData) {
+  if (game.user.isGM) {
+    return item.update(updateData);
+  }
+  return socket.executeAsGM("updateItemUses", item.actor.id, item.id, updateData);
+}
+
+if (game.user.isGM) {
+  socket.register("updateItemUses", async (actorId, itemId, data) => {
+    const actor = game.actors.get(actorId);
+    const item  = actor?.items.get(itemId);
+    if (!item) return false;
+    console.log("👑 [GM] Applying update on server:", data);
+    return item.update(data);
+  });
+}
+
+
 Hooks.once("ready", () => {
   console.log("⚔️ [Xeno-Malice] Ready — DamageRollComplete active");
 });
 
-/* ---------------------------------------------------------
- * Xenotic Damage Handling
- * --------------------------------------------------------- */
 Hooks.on("midi-qol.DamageRollComplete", async (workflow) => {
-  console.log("🜂 [Xeno-Malice] DamageRollComplete!");
+  console.log("🜂 [Xeno-Malice] DamageRollComplete triggered");
 
   const attacker = workflow.actor;
-  const targetToken = workflow.hitTargets?.first?.();
+  const targetToken = workflow.hitTargets?.first?.() ?? workflow.targets?.first?.();
   if (!attacker || !targetToken) return;
 
   const defender = targetToken.actor;
   if (!defender) return;
 
-  // --- Damage Split ---
-  let xenotic = 0;
-  let normal = 0;
+  // --- Xenoticダメージ集計 ---
+  let xenoticTotal = 0;
+  let normalTotal = 0;
   const normalDetails = [];
 
+  console.log("🔧 [Xeno-Malice] workflow.damageDetail:", workflow.damageDetail);
+
   for (const d of workflow.damageDetail) {
-    const type = (d.type ?? "").toLowerCase();
-    if (type === "xenotic") {
-      xenotic += d.value ?? d.damage ?? 0;
+    console.log("🔧 [Xeno-Malice] Damage detail entry:", d);
+    const dmgType = String(d.type ?? "").toLowerCase();
+    if (dmgType === "xenotic") {
+      xenoticTotal += d.value ?? d.damage ?? 0;
     } else {
-      normal += d.value ?? d.damage ?? 0;
+      normalTotal += d.value ?? d.damage ?? 0;
       normalDetails.push(d);
     }
   }
 
-  console.log(`🧮 [Xeno-Malice] Totals → Normal:${normal} / Xenotic:${xenotic}`);
+  console.log(
+    `🔧 [Xeno-Malice] collected totals → Normal:${normalTotal}, Xenotic:${xenoticTotal}`
+  );
 
-  /* ----------------------------------------
-   * Xenotic蓄積（攻撃側）
-   * ---------------------------------------- */
-  if (xenotic > 0 && attacker.type === "character") {
-    console.log(`🔥 [Xeno-Malice] Attacker dealt Xenotic: +${xenotic}`);
+  if (xenoticTotal > 0 && attacker.type === "character") {
+    console.log(`🔥 [Xeno-Malice] Xenotic +${xenoticTotal}`);
 
-    // XenoticPoint アイテム特定（名前完全一致）
-    const xpItem = attacker.items.find(i =>
+    // ★ XenoticPoint アイテムを特定（同名が複数あるので「最後の1つ」を採用）
+    const allXenoItems = attacker.items.contents.filter(i =>
       (i.name ?? "").toLowerCase() === "xenoticpoint"
     );
 
+    console.log(
+      "📦 [Xeno-Malice] XenoticPoint candidates:",
+      allXenoItems.map(i => `${i.name} (${i.id})`)
+    );
+
+    const xpItem = allXenoItems.at(-1); // 配列の最後の XenoticPoint を使用
     if (!xpItem) {
-      console.warn("🚫 [Xeno-Malice] XenoticPoint missing on attacker");
+      console.warn("❌ [Xeno-Malice] XenoticPoint item NOT FOUND on attacker");
     } else {
+      console.log(`🎯 [Xeno-Malice] Using XenoticPoint item: ${xpItem.name} (${xpItem.id})`);
       const uses = xpItem.system?.uses;
-      const before = Number(uses?.value ?? 0);
-      const after = before + xenotic;
 
-      console.log(`📈 [Xeno-Malice] XenoticPoint: ${before} → ${after}`);
+      if (!uses) {
+        console.warn("⚠ [Xeno-Malice] XenoticPoint.item.system.uses is missing");
+      } else {
+        const before = Number(uses.value ?? 0);
+        let rawMax = uses.max;
+        let max = isNaN(Number(rawMax)) || rawMax === "" ? null : Number(rawMax);
 
-      const updateData = { "system.uses.value": after };
-      if (uses?.max === "") updateData["system.uses.max"] = null;
+        const after = before + xenoticTotal;
 
-      await gmUpdateItem(attacker.id, xpItem.id, updateData);
+        console.log(
+          `📈 [Xeno-Malice] XenoticPoint uses: ${before} → ${after} (max=${max ?? "∞"})`
+        );
 
-      console.log("💾 [Xeno-Malice] XenoticPoint updated ✔");
+        const updateData = { "system.uses.value": after };
+        if (rawMax === "") {
+          // maxが空文字ならついでにnullにしておく（安全化）
+          updateData["system.uses.max"] = null;
+          console.log("🧹 [Xeno-Malice] Fixed invalid max ('') → null");
+        }
+
+        // GM権限で確実に適用
+	await gmUpdateItem(xpItem, updateData);
+
+	console.log(
+  	"💾 [Xeno-Malice] GM-safe XenoticPoint update requested:",
+  	updateData
+      }
     }
   }
 
-  /* ----------------------------------------
-   * Aura 転送処理
-   * ---------------------------------------- */
-  if (xenotic <= 0) return;
-
+  // === 以下はオーラへのXenoticダメージ転送（必要であれば残す） ===
   const auraId = await defender.getFlag("world", "auraId");
-  if (!auraId) return;
+  if (!auraId || xenoticTotal <= 0) return;
 
   const auraActor = game.actors.get(auraId);
-  const auraToken = auraActor?.getActiveTokens()[0];
+  if (!auraActor) return;
+  const auraToken = auraActor.getActiveTokens()[0];
   if (!auraToken) return;
 
+  // Defenderには通常ダメージのみ残す
   workflow.damageDetail = normalDetails;
-  workflow.damageTotal = normal;
+  workflow.damageTotal = normalTotal;
 
   try {
     await MidiQOL.applyTokenDamage(
-      [{ damage: xenotic, type: "xenotic" }],
-      xenotic,
+      [{ damage: xenoticTotal, type: "xenotic" }],
+      xenoticTotal,
       new Set([auraToken]),
       workflow.item,
       new Set(),
       { flavor: "Xenotic" }
     );
-    console.log(`➡ [Xeno-Malice] Xenotic transferred to Aura: ${xenotic}`);
+    console.log(`➡ [Xeno-Malice] Xenotic transferred to Aura (${xenoticTotal})`);
   } catch (e) {
-    console.error("❌ [Xeno-Malice] Aura damage error", e);
+    console.error("❌ [Xeno-Malice] Aura damage error:", e);
   }
 });
