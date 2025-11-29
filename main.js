@@ -1,26 +1,40 @@
-// XenoticPoint の Document ID 固定
-const ACTOR_ID = game.user.character?.id;
-if (!ACTOR_ID) return ui.notifications.error("❌ No controlled character found");
+/************************************************************
+ * Xeno-Malice Safe Test v3.7.1
+ * XenoticPoint (ID固定) の uses.value を +1するだけ
+ ************************************************************/
 
-const actor = game.actors.get(ACTOR_ID);
-const item = actor.items.get("nWyRMw6vdeX8XQ3K"); // ←固定
+console.log("🧪 [Xeno-Malice Test] v3.7.1 loaded");
 
-if (!item) {
-  return ui.notifications.warn("⚠ XenoticPoint NOT FOUND on Character!");
-}
+// ★ あなたの XenoticPoint アイテムID（固定）
+const ITEM_ID = "nWyRMw6vdeX8XQ3K";
 
-const uses = item.system?.uses;
-if (!uses) {
-  return ui.notifications.warn("⚠ item.system.uses is undefined!");
-}
+// Foundry 起動後、即テスト実行
+Hooks.once("ready", async () => {
+  console.log("🧪 [Xeno-Malice Test] ready → Try update…");
 
-const before = Number(uses.value ?? 0);
-const after  = before + 1;
+  const actor = game.user.character;
+  if (!actor) {
+    return ui.notifications.error("❌ game.user.character なし");
+  }
 
-console.log(`📈 TEST: XenoticPoint uses ${before} → ${after}`);
+  const item = actor.items.get(ITEM_ID);
+  if (!item) {
+    return ui.notifications.error("❌ XenoticPoint アイテム未発見（ID不一致？）");
+  }
 
-// --- ★ピンポイント更新---
-await item.update({ "system.uses.value": after });
+  const uses = item.system?.uses;
+  if (!uses) {
+    return ui.notifications.error("❌ system.uses が無い");
+  }
 
-console.log("💾 Update request completed");
-ui.notifications.info("✔ Update Done!");
+  const before = Number(uses.value ?? 0);
+  const after = before + 1;
+
+  console.log(`📈 [Xeno-Malice Test] uses: ${before} → ${after}`);
+
+  await item.update({ "system.uses.value": after });
+
+  console.log("💾 [Xeno-Malice Test] 更新完了");
+  ui.notifications.info("✔ XenoticPoint +1 完了！");
+
+});
